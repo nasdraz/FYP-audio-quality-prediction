@@ -1,0 +1,249 @@
+\documentclass[]{UCD_CS_FYP_Report}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+\lstset{
+    mathescape=true,
+    basicstyle = \ttfamily
+}
+%\usepackage[backend=biber,style=chicago-authordate]{biblatex}
+\usepackage[backend=biber,style=nature]{biblatex}
+\addbibresource{My Collection.bib}
+
+
+%%%%%%%%%%%%%%%%%%%%%%
+%%% Input project details
+
+\def\studentname{Martynas Draždžiulis}% Edit with your name
+\def\studentid{17444044}% Edit with your student id
+\def\projecttitle{Quality is in the eye of the DNN} % Edit with you project title
+\def\supervisorname{Dr. Andrew Hines}
+
+
+\begin{document}
+\maketitle
+
+%%%%%%%%%%%%%%%%%%%%%%
+%%% Table of Content
+
+\tableofcontents
+%\pdfbookmark[0]{Table of Contents}{toc}\newpage
+
+\href{https://csgitlab.ucd.ie/martynas.drazdziulis/audio-quality-dnn-fyp}{Link to gitlab repo}
+
+%\newpage
+
+%%%%%%%%
+\begin{abstract}
+	This paper explores the application of different machine learning models in audio quality prediction. The standard approaches using SVRs or MLPs suffer heavily from noisy data and do not follow a monotonic trend desirable in audio quality prediction. The approach taken in this project is the use of lattices to enforce monotonic trends. The lattice and standard models were evaluated and compared in their accuracy and monotonicity. The findings of this project show that the use of lattices can help develop more monotonic and predictable models, but at some cost in accuracy. This paper concludes that domain knowledge can be successfully applied in audio quality prediction. The exploration of further methods of incorporating domain knowledge could see improvements in audio quality prediction. 
+\end{abstract}
+
+%%%%%%%%
+\chapter{Introduction}
+
+Audio compression is an important process that allows various online content providers to minimize bandwidth costs associated with online content delivery. However, a certain level of audio quality must be preserved to ensure a positive user experience. Therefore, the content providers must be able to compare reference and compressed audio samples to estimate the listening quality of the compressed audio as it would be perceived by a human. 
+
+Virtual Speech Quality Objective Listener (ViSQOL) is one effective computer model that is used to predict audio quality. While VISQOL addresses issues such as pre-processing, alignment, and time warp, this project focuses on the similarity comparison and similarity score mapping components. ViSQOL compares the spectrograms of the reference and compressed audio samples to arrive at a similarity score. The mapping component maps the similarity score to a Mean Opinion Score - Listening Quality Objective (MOS-LQO). For general audio, ViSQOL uses Support Vector Regression (SVR) to map similarity scores to MOS-LQO. The mapping component is trained using Mean Opinion Score - Listening Quality Subjective (MOS-LQS) scores which are obtained by conducting subjective listening tests. Both MOS-LQO and MOS-LQS are on a Likert scale between 1 and 5, where 1 represents bad listening quality and 5 represents excellent listening quality. 
+
+For this project, a Deep Neural Network (DNN) based components to map similarity scores to MOS-LQO for the VISQOL model while enforcing monotonicity were implemented. TensorFlow was used to implement the models. In this case, a monotonic relationship between the similarity score and MOS-LQO is desired since it is expected that as the similarity of a compressed audio sample to the reference audio sample increases, so should the perceived listening quality. New data was collected since there are datasets such as the TCD-VoIP dataset that suit the project already available.
+
+Since SVR is the current mapping component for ViSQOL, an SVR model was trained to serve as the baseline model for this project. Three further models were trained. One of the models was a basic MLP model and the other two were models using lattices. All the models were evaluated and compared based on their accuracy and monotonicity.
+
+Majority of the goals set out for this project were achieved. The baseline and the DNN models were successfully implemented. These models were evaluated and the comparison between them provided some insights in incorporating domain knowledge for predicting audio listening quality. The project's results showed that lattices can be used successfully in this domain to promote monotonicity, albeit with some decrease in accuracy. Although planned, a PWL model was not implemented and leaves room for future work. The research for this project was a great opportunity to learn more about the field of machine learning and audio quality prediction. The implementation of the project involved getting familiar with machine learning libraries like TensorFlow and Keras.
+
+
+%%%%%%%%
+\chapter{Background and Related work}
+
+%%%%%%%%
+\section{Subjective Evaluation of Listening Quality}
+
+Subjective evaluation of listening quality is the basis for the development of objective listening quality prediction models, as the aim is ultimately to predict how a human would perceive the audio. ITU-T (The ITU Telecommunication Standardization Sector) has produced a paper establishing a set of methods for subjective determination of transmission quality \cite{ITU1996}. Certain recommendations on performing listening tests are especially relevant, although a lot of the recommendations focus on setting a standard for test conditions. While performing listening tests is not within the scope of this project, results of listening tests performed according to the aforementioned conventions will be used in this project. The paper recommends an absolute category rating for listening opinion tests. The listening quality scale recommended is a 5 level scale of scores between 1 and 5 representing bad and excellent quality of speech respectively. The average of the listening quality scores is used to calculate a MOS. The MOS scores collected from subjective quality tests are used to train and evaluation of objective listening quality models.
+
+%%%%%%%%
+\section{Objective Speech Quality Assessment Models}
+
+PESQ \cite{Beerends2002pesq} (Perceptual evaluation of speech quality) is a model that aimed to address the shortcomings of the PSQM (Perceptual Speech Quality Measure) model. Specifically, it took into account filtering, variable delay, and short localized distortions which the PSQM model did not. Initially made for narrowband speech codecs, an extension was developed to allow the assessment of wideband codecs.
+The PESQ model starts by computing the delays between the reference and degraded signal and uses these to align the signals. The perceptual model converts the original and degraded signals into an internal representation that aims to mimic the audio representation in the human auditory system. The internal representation is processed to account for small variations between the representations that may not result in perceptual disturbance and compensate for them while more significant variations are only partially compensated and contributes to the perceptual disturbance. Two error parameters are used to produce an objective listening quality MOS. The model is known to be inaccurate when used with variable listening levels, loudness loss, the effect of delay in conversational tests, talker echo, and sidetones.
+
+POLQA \cite{ITU-TRec.P.8632014polqa} (Perceptual objective listening quality prediction) is a newer model that has support for the assessment of fullband speech and channels that introduce time warping. The POLQA model is intended for a broader array of applications than PESQ. The model's measurement algorithm also compares the reference and degraded signals to assess the speech quality.  The POLQA model splits both signals into frames and computes the delays between them similarly to PESQ. The comparison of the signals is done using a perceptual model. Again the signals are transformed into an internal representation that is analogous to the audio representation in the human auditory system. When the model is in full band mode it can take into account the playback level when predicting the perceived quality while the narrowband mode assumes a constant listening level. POLQA can deal with minor effects like local gain variations and compensate for them while preserving the impact on perceptual disturbance of more severe effects. 
+The POLQA model also implements idealization of the reference signal. This involves removing low levels of noise along with partial suppression of noise in the degraded signal and timbre optimization as it was observed that reference recordings scored lower when timbre was not optimal and low levels of noise were present. Since POLQA measures one-way effects of speech distortion and noise, it can not account for the effect of delay in conversational tests, talker echo, sidetones, or acoustic noise in the receiving environment.
+
+ViSQOL \cite{Hines2015} (Virtual Speech Quality Objective Listener) is a model that has a different approach than then ITU models. It compares the spectrograms of a reference and degraded signal to determine the similarity between them. ViSQOL specifically aims to be able to handle quality issues associated with VoIP transmission. The model uses an NSIM (Neurogram similarity index measure) on the spectrograms of the signals. Short-term Fourier transform spectrograms are made for the scaled degraded and reference signals. The reference spectrogram is split into active patches according to an energy threshold voice activity detector. Each patch is compared to the degraded spectrogram frame by frame. The maximum NSIM values for each patch are averaged to arrive at a similarity score for the whole signal. To tackle time warp, ViSQOL creates alternative reference patches that are slightly longer and shorter. The degraded signal is compared to the reference and warped reference patches, picking the highest similarity score. The similarity scores are then mapped to a listening quality objective narrow band MOS. ViSQOLAudio is the adaptation of ViSQOL to predict audio (music) quality instead of speech that uses Support Vector Regression for mapping similarity scores to MOS. \cite{Sloan2017} ViSQOL is the focus of this project and has been shown to perform comparably to the previously discussed models and particularly well when it comes to VoIP associated problems as seen in figure \ref{fig:visqolvoip}. ViSQOL v3 \cite{Chinen2020} is the latest iteration that was released. It features an open-source C++ library and improvements based on users' feedback.
+
+\begin{figure}
+  \includegraphics[width=0.7\textwidth]{visqolVOIP.png}
+  \centering
+  \caption{ "Objective measures against subjective MOS scores for VoIP degradations" \cite{Hines2015}}
+  \label{fig:visqolvoip}
+\end{figure}
+
+%%%%%%%%
+\section{Domain Knowledge in Deep Neural Networks}
+
+Knowledge about a domain can be used to improve the model by making it less susceptible to noise, more generalized, and interpretable. This project aims to exploit the fact that we know the relationship between similarity scores and listening opinion scores to be monotonically increasing. The effectiveness of incorporating prior knowledge, including monotonicity, into deep learning models has been shown in a paper by Muralidhar et al.  \cite{Muralidhar2019} The paper compares a domain adapted neural network (DANN) to a regular DNN. Approximation and monotonicity constraints are tested. The authors performed experiments on both real and synthetic data. In both cases, they tested the performance of both models with varying levels of noise and reduced training sets. In each case, the DANN outperformed the regular DNN. Figure \ref{fig:danntest} shows the comparison of results for decreasing training set using a monotonicity constraint.
+
+\begin{figure}[h]
+  \includegraphics[width=\linewidth]{danntest.PNG}
+  \caption{ "Comparison of DANN and NN with reduced training data (lower the better)". \cite{Muralidhar2019}} Where the left is the noisy validation set and the right is noise-free validation set.
+  \label{fig:danntest}
+\end{figure}
+
+%%%%%%%%
+\section{Hard and Soft Constraints in Deep Neural Networks}
+
+This section focuses on techniques used to enforce constraints on DNNs.
+Some previous work has shown limitations of hard constraints in DNNs. Márquez-Neila et al.\cite{Marquez-Neila2017} have shown that DNNs with hard constraints could be implemented in a tractable way. While their implementation worked well, it didn't perform as well as DNNs using soft constraints. Figure \ref{fig:hardvssoft} shows how using soft constraints led to stable improvements while hard constraints were unpredictable in their experiments.
+
+\begin{figure}
+  \includegraphics[width=\linewidth]{hardvssoft.PNG}
+  \caption{"Differences between the absolute value of the active constraints before and after the update step at every iteration. A positive value
+indicates that the update step deteriorated the quality of the active constraints". \cite{Marquez-Neila2017} }
+  \label{fig:hardvssoft}
+\end{figure}
+
+A paper by Gupta et al.\cite{Gupta2019} explores the use of a soft constraint to enforce monotonicity. The authors employ the use of a Point-Wise Loss (PWL) function incorporating monotonic knowledge. The function can be used in any DNN by implementing the PWL function as an additional cost that penalizes non-monotonicity. The authors aim to create a compromise between minimizing empirical risk and enforcing monotonicity. The authors' experiments displayed comparable results between the DNN using PWL and a Deep Lattice Network (DLN) based on ROC - Area Under the Curve and monotonicity metrics. Using PWL also resulted in reduced training time compared to DLN in the authors' experiments. The paper demonstrates that PWL can be used to create flexible models while considering monotonicity. The paper also demonstrates that DLNs fails to apply to unseen data well due to their use of multi-linear interpolation as seen in figure \ref{fig:DLNvsPWL}. 
+
+\begin{figure}
+  \includegraphics[width=\linewidth]{DLNandPWL.png}
+  \caption{"UCI - Adult dataset: Conditioned trends for Education Level" Shows the different results of using a DLN (left) and a PWL (right) \cite{Gupta2019}}
+  \label{fig:DLNvsPWL}
+\end{figure}
+
+
+%%%%%%%%
+
+\chapter{Implementation}
+
+\section{The Data}
+
+
+\section{The Models}
+
+\subsection{SVR Model}
+\subsection{MLP Model}
+\subsection{Lattice Models}
+
+\section{Evaluation}
+
+%%%%%%%%
+\chapter{Results}
+
+The proposed models did not achieve improved accuracy compared to the SVR model, as measured by Pearson correlation. This was somewhat anticipated as striving for stronger monotonicity meant that some noisy data points would not be as accurately represented in the MOSLQO predictions. All models outperformed SVR in monotonicity, as measured by Spearman rank correlation. 
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ |c||c|c|  }
+ \hline
+ \multicolumn{3}{|c|}{Model Scores} \\
+ \hline
+ Model & Pearson & Spearman\\
+ \hline
+SVR & 0.85 & 0.74\\
+MLP & 0.75 & 0.76 \\
+Lattice Ensemble & 0.82 & 0.85\\
+Lattice Reduced & 0.65 & 0.99 \\
+ \hline
+\end{tabular}
+\caption{Pearson score represents the correlation between the predicted MOSLQO score and the target MOSLQS scores. Spearman score represents the rank correlation between the average similarity and the predicted MOSLQO score. }
+\label{table:1}
+\end{table}
+
+The MLP model's Pearson score is significantly lower as compared to the SVR model while being only marginally more monotonic. The MLP model was unlikely to perform well here for several reasons. The small and quite noisy data set meant that the MLP model would not be able to generalise for the problem well and would learn too much from the noise. Since the MLP model was not constrained for monotonicity, it was not expected that it would perform any better than the SVR model for this metric. The small difference in the Spearman scores is not very significant. 
+
+The lattice ensemble model results turned out to be more promising. Accuracy was not greatly diminished with the lattice ensemble model as compared to the SVR model, Pearson correlation differing only by 0.03. However, the  lattice ensemble model turned out to be significantly more monotonic. The result being that the lattice ensemble is more predictable, however the model is far from ideal. The improvement can be seen by looking at the SVR model (figure \ref{fig:svr-sim-lqo}) and the lattice ensemble model (figure \ref{fig:le-sim-lqo}) predictions compared to the average similarity. However, a high level of variance remains across the predictions when the similarity is high in the lattice ensemble model, but it is much less likely to give high scores when the similarity is high and vice versa. This results in a more consistent model where it can be reasonably expected that a high similarity will score higher, although this is more true when it comes to either very similar or dissimilar examples rather than more intermediate values.
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[width=0.7\linewidth]{figures/svr-sim-lqo.png}
+  \caption{Shown are the results of the SVR implementation. Each point represents a pair of reference and degraded audio files. The x-axis is the average of the similarity values generated by the ViSQOL model for each audio pair. The y-axis is the predicted audio quality score based on the similarities generated by the ViSQOL model.}
+  \label{fig:svr-sim-lqo}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[width=0.7\linewidth]{figures/le-sim-lqo.png}
+  \caption{Shown are the results of the lattice ensemble implementation. Each point represents a pair of reference and degraded audio files. The x-axis is the average of the similarity values generated by the ViSQOL model for each audio pair. The y-axis is the predicted audio quality score based on the similarities generated by the ViSQOL model.}
+  \label{fig:le-sim-lqo}
+\end{figure}
+
+The reduced lattice Pearson correlation with the target scores was expectedly low since this model made predictions on a greatly reduced amount of datapoints, using just the average similarity. Due to the simplicity, it was able to achieve near perfect monotonicity (figure \ref{fig:rl-sim-lqs}). This model is consistent even across intermediate values and a higher similarity will not produce a significantly lower score. Due to it's lower accuracy in predicting the target scores it might not be as useful as the other models.
+
+\section{Discussion}
+
+As anticipated the lattice models beat the other models when it comes to Spearman score. Spearman rank correlation coefficient in this case gives us insight into how well the relation ship between the average similarity and the MOSLQO scores could be mapped using an increasing monotonic function. This means that for a higher Pearson score the MOSLQO scores should increase, at varying rates, along with the increase in average similarity. This relationship is generally followed in the SVR and MLP models, as seen in figures \ref{fig:svr-sim-lqo}and \ref{fig:mlp-sim-lqo} , but there are many violations. The lattice ensemble model, figure \ref{fig:le-sim-lqo}, follows this relationship closer, but not perfectly. Finally, the reduced lattice model, \ref{fig:rl-sim-lqs} is much more strictly monotonic.
+
+The Pearson scores were calculated as the pearson correlation coefficient between the target MOSLQS scores and the predicted MOSLQO scores. The perfect model would see a completely linear relationship between the predictions and the target. The SVR model has the highest score, with 
+
+
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[width=0.7\linewidth]{figures/mlp-sim-lqo.png}
+  \caption{Shown are the results of the MLP implementation. Each point represents a pair of reference and degraded audio files. The x-axis is the average of the similarity values generated by the ViSQOL model for each audio pair. The y-axis is the predicted audio quality score based on the similarities generated by the ViSQOL model.}
+  \label{fig:ml-sim-lqs}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[width=0.7\linewidth]{figures/rl-sim-lqo.png}
+  \caption{Shown are the results of the reduced lattice implementation. Each point represents a pair of reference and degraded audio files. The x-axis is the average of the similarity values generated by the ViSQOL model for each audio pair. The y-axis is the predicted audio quality score based on the similarities generated by the ViSQOL model.}
+  \label{fig:rl-sim-lqs}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[width=0.7\linewidth]{figures/svr-lqs-lqo.png}
+  \caption{}
+  \label{fig:svr-lqs-lqo}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[width=0.7\linewidth]{figures/mlp-lqs-lqo.png}
+  \caption{}
+  \label{fig:mlp-lqs-lqo}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[width=0.7\linewidth]{figures/le-lqs-lqo.png}
+  \caption{}
+  \label{fig:le-lqs-lqo}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+  \includegraphics[width=0.7\linewidth]{figures/rl-lqs-lqo.png}
+  \caption{}
+  \label{fig:lr-lqs-lqo}
+\end{figure}
+
+
+
+\chapter{Future Work and Conclusions}
+
+\section{Future Work}
+There are other ways to enforce constraints in DNN models. A custom loss function penalizing non-monotonicity is another proposed solution that could be explored. Background research suggests that a PWL loss function may be a viable alternative to lattices for this problem. The small size of the dataset is also a limiting factor. Future work would likely  benefit by working on a larger combined dataset. A larger amount of data and data with different types of degradation to work with would greatly benefit the DNN models' ability to generalize. 
+
+\section{Conclusions}
+The results seem to indicate that there is potential in using DNNs with incorporated knowledge in audio quality. While the approaches taken in this project did not result in more accurate models when it comes to predicting moslqs, models with greater monotonicity and varying degrees of accuracy loss emerged. It was observed that there might be a balance between seeking model monotonicity and accuracy. This project has observed that a higher degree of monotonicity can be achieved with minimal loss in accuracy or a near perfect monotonicity while sacrificing a lot more accuracy. The degree of monotonicity and accuracy required would depend largely on the model user and use case. There are also approaches to enforce monotonicity in DNNs that were not implemented in this project that could have positive results. Based on this project there seems to be good reasons for using DNNs in audio quality prediction and more solutions employing DNNs should be explored.
+
+Several goals were set out in the planning stage of the project to determine its success. Besides conducting the research discussed above, they also included personal development. Shuffling other academic studies and the work required for this project proved to be challenging. Working on this project gave me insights into the importance of careful planning and time allocation that will be useful for future projects. The research done for the project helped me improve in finding related work and extracting the relevant information. It also greatly improved my understanding of various audio quality prediction models and machine learning. In the implementation stage I gained valuable experience in using the TensorFlow and Keras libraries as well as custom tools like ViSQOL. 
+
+
+%%%% ADD YOUR BIBLIOGRAPHY HERE
+\printbibliography
+
+%%%%
+%%%% maybe code listing here?
+
+%%%%
+\end{document}
+%\end{article}
